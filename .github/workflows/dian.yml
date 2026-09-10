@@ -1,0 +1,66 @@
+name: Consulta citas DIAN
+
+# Corre L-V. GitHub cron usa UTC: 13:00 UTC = 08:00 America/Bogota (UTC-5).
+on:
+  schedule:
+    - cron: "0 13 * * 1-5"
+  workflow_dispatch: # permite ejecutarlo manualmente desde la pestaña Actions
+    inputs:
+      dry_run:
+        description: "Ejecutar en dry-run (no envía a Telegram)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: dian-citas
+  cancel-in-progress: false
+
+jobs:
+  consultar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Instalar Chromium (con dependencias del SO)
+        run: python -m playwright install --with-deps chromium
+
+      # Restaura el estado de la corrida anterior para no re-notificar lo mismo.
+      - name: Restaurar estado
+        uses: actions/cache@v4
+        with:
+          path: state
+          key: dian-state-${{ github.run_id }}
+          restore-keys: |
+            dian-state-
+
+      - name: Consultar disponibilidad
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DIAN_TIPO_ATENCION: Videoatención
+          DIAN_CATEGORIA: Devoluciones
+          DIAN_CIUDAD: Medellín
+          TZ: America/Bogota
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python -m dian_bot.main --dry-run
+          else
+            python -m dian_bot.main --once
+          fi
+
+      # Guarda el estado actualizado para la próxima corrida.
+      - name: Guardar estado
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: dian-state-${{ github.run_id }}
