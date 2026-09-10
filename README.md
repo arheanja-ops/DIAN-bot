@@ -34,6 +34,35 @@ pip install -r requirements.txt
 python -m playwright install chromium
 ```
 
+O con el script incluido:
+
+```bash
+./scripts/setup.sh   # crea venv, instala deps + Chromium y prepara .env
+```
+
+## Entorno con direnv (opcional pero recomendado)
+
+Al entrar a la carpeta, [direnv](https://direnv.net/) activa el venv, carga
+`.env` y aísla la config de GitHub CLI del proyecto. Ver
+[`docs/DIRENV-SETUP.md`](docs/DIRENV-SETUP.md).
+
+```bash
+cp .envrc.example .envrc
+direnv allow
+```
+
+Los secretos siguen viviendo solo en `.env` (ignorado por git); el `.envrc` no
+contiene ningún token.
+
+## Scripts
+
+| Script | Qué hace |
+|---|---|
+| `scripts/setup.sh` | Crea venv, instala dependencias + Chromium, copia `.env` |
+| `scripts/run.sh [--dry-run]` | Ejecuta una consulta (con o sin envío a Telegram) |
+| `scripts/test.sh` | Corre la suite de tests |
+| `scripts/gh-login.sh` | Autentica la GitHub CLI en el `GH_CONFIG_DIR` aislado del proyecto |
+
 ## Configuración
 
 1. Crea un bot con [@BotFather](https://t.me/BotFather) y copia el token.
