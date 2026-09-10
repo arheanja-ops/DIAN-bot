@@ -18,7 +18,7 @@ from apscheduler.triggers.cron import CronTrigger
 from .config import Config, ConfigError
 from .notifier import build_message, notify
 from .scraper import ScrapeError, check_availability
-from .state import load_last, save, should_notify
+from .state import append_history, load_last, save, should_notify
 
 log = logging.getLogger("dian_bot")
 
@@ -51,6 +51,7 @@ async def run_once(cfg: Config, *, dry_run: bool = False) -> bool:
     prev = load_last(cfg.state_path)
     notify_now = should_notify(prev, current)
     save(cfg.state_path, current)
+    append_history(cfg.history_path, current)
 
     if not notify_now:
         log.info("Sin cambios notificables (no hay cita nueva).")

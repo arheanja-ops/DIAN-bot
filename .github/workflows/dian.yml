@@ -1,10 +1,11 @@
 name: Consulta citas DIAN
 
-# Corre L-V. GitHub cron usa UTC: 13:00 UTC = 08:00 America/Bogota (UTC-5).
+# 10 consultas/día TODOS los días (incl. fin de semana, para descubrir el patrón
+# de liberación de cupos). Horas UTC = 06:00–23:00 America/Bogota (UTC-5).
 on:
   schedule:
-    - cron: "0 13 * * 1-5"
-  workflow_dispatch: # permite ejecutarlo manualmente desde la pestaña Actions
+    - cron: "0 1,3,4,11,13,15,17,19,21,23 * * *"
+  workflow_dispatch:
     inputs:
       dry_run:
         description: "Ejecutar en dry-run (no envía a Telegram)"
@@ -30,10 +31,23 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-      - name: Instalar Chromium (con dependencias del SO)
-        run: python -m playwright install --with-deps chromium
+      # Cachea el navegador para no descargarlo en cada corrida (ahorra tiempo).
+      - name: Cache de navegador Playwright
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-chromium
 
-      # Restaura el estado de la corrida anterior para no re-notificar lo mismo.
+      - name: Instalar Chromium
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            python -m playwright install-deps chromium
+          else
+            python -m playwright install --with-deps chromium
+          fi
+
+      # Restaura estado + histórico de la corrida anterior.
       - name: Restaurar estado
         uses: actions/cache@v4
         with:
@@ -57,10 +71,19 @@ jobs:
             python -m dian_bot.main --once
           fi
 
-      # Guarda el estado actualizado para la próxima corrida.
       - name: Guardar estado
         if: always()
         uses: actions/cache/save@v4
         with:
           path: state
           key: dian-state-${{ github.run_id }}
+
+      # Publica el histórico como artefacto descargable para analizar el patrón.
+      - name: Publicar histórico
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: history-${{ github.run_id }}
+          path: state/history.jsonl
+          if-no-files-found: ignore
+          retention-days: 30

@@ -62,3 +62,17 @@ def should_notify(prev: Availability | None, current: Availability) -> bool:
     if prev is None:
         return True
     return prev.signature() != current.signature()
+
+
+def append_history(path: str, av: Availability) -> None:
+    """Agrega el resultado a un histórico JSONL (una línea por consulta).
+
+    Sirve para analizar el patrón temporal de liberación de citas (p. ej. si la
+    DIAN abre cupos en fin de semana o de madrugada). No falla si el directorio
+    no existe: lo crea.
+    """
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(asdict(av), ensure_ascii=False, sort_keys=True)
+    with p.open("a", encoding="utf-8") as fh:
+        fh.write(line + "\n")

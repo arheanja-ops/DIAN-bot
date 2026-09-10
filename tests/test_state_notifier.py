@@ -4,7 +4,7 @@ No dependen de red ni de navegador. Cubren las reglas de negocio críticas:
 cuándo notificar y qué contiene el mensaje.
 """
 from dian_bot.notifier import build_message
-from dian_bot.state import Availability, save, load_last, should_notify
+from dian_bot.state import Availability, save, load_last, should_notify, append_history
 
 
 def _av(available, slots=None, **kw):
@@ -65,3 +65,18 @@ def test_mensaje_incluye_datos_clave():
     assert "Medellín" in msg
     assert "08:30" in msg
     assert "agendamiento.dian.gov.co" in msg
+
+
+def test_append_history_agrega_lineas(tmp_path):
+    import json
+
+    path = str(tmp_path / "history.jsonl")
+    append_history(path, _av(False))
+    append_history(path, _av(True, ["08:30"]))
+    lines = [ln for ln in open(path, encoding="utf-8").read().splitlines() if ln]
+    assert len(lines) == 2
+    first = json.loads(lines[0])
+    second = json.loads(lines[1])
+    assert first["available"] is False
+    assert second["available"] is True
+    assert second["slots"] == ["08:30"]
