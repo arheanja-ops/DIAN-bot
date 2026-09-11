@@ -29,11 +29,15 @@ data "aws_iam_policy_document" "github_assume" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # Solo ramas y PRs de este repo.
+    # La cuenta exige un `sub` específico (no comodín total). Autorizamos
+    # solo la rama main y los PRs de este repo.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:*"]
+      values = [
+        "repo:${var.github_repo}:ref:refs/heads/main",
+        "repo:${var.github_repo}:pull_request",
+      ]
     }
   }
 }

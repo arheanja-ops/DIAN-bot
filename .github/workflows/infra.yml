@@ -34,6 +34,16 @@ jobs:
         working-directory: infra
     steps:
       - uses: actions/checkout@v4
+
+      - name: DEBUG · claims del token OIDC
+        working-directory: .
+        run: |
+          TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | python3 -c "import sys,json;print(json.load(sys.stdin)['value'])")
+          PAYLOAD=$(echo "$TOKEN" | cut -d. -f2)
+          PAYLOAD="${PAYLOAD}$(printf '%*s' $(( (4 - ${#PAYLOAD} % 4) % 4 )) '' | tr ' ' '=')"
+          echo "$PAYLOAD" | base64 -d 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print('SUB:', d.get('sub')); print('REPO:', d.get('repository')); print('REF:', d.get('ref'))"
+
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.16.1"
