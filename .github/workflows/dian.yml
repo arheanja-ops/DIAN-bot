@@ -1,10 +1,9 @@
 name: Consulta citas DIAN
 
-# TEMPORAL: cada 30 min, todos los días. GitHub retrasa/omite crons gratuitos,
-# así que la frecuencia real será menor (por eso migraremos a EventBridge+Lambda).
+# DESACTIVADO: el monitoreo automático ahora vive en AWS Lambda + EventBridge
+# (L-V 7am-5pm cada 10 min, ver infra/). Este workflow queda solo para
+# ejecución manual puntual desde la pestaña Actions.
 on:
-  schedule:
-    - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
