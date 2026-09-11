@@ -85,25 +85,33 @@ async def run_once(cfg: Config, *, dry_run: bool = False) -> bool:
 
 def _schedule(cfg: Config) -> None:
     scheduler = AsyncIOScheduler(timezone=cfg.timezone)
-    trigger = CronTrigger(
-        day_of_week="mon-fri",
-        hour=cfg.poll_hour,
-        minute=cfg.poll_minute,
-        timezone=cfg.timezone,
-    )
+    if cfg.poll_interval_min > 0:
+        # Modo intervalo: consulta cada N minutos (útil para monitoreo local).
+        from apscheduler.triggers.interval import IntervalTrigger
+
+        trigger = IntervalTrigger(minutes=cfg.poll_interval_min, timezone=cfg.timezone)
+        desc = f"cada {cfg.poll_interval_min} min"
+    else:
+        # Modo diario: L-V a la hora configurada.
+        trigger = CronTrigger(
+            day_of_week="mon-fri",
+            hour=cfg.poll_hour,
+            minute=cfg.poll_minute,
+            timezone=cfg.timezone,
+        )
+        desc = f"L-V {cfg.poll_hour:02d}:{cfg.poll_minute:02d}"
+
     scheduler.add_job(
-        lambda: asyncio.create_task(run_once(cfg)),
+        run_once,
+        args=[cfg],
         trigger=trigger,
-        name="consulta_diaria_dian",
-        misfire_grace_time=3600,
+        name="consulta_dian",
+        misfire_grace_time=600,
+        coalesce=True,
+        max_instances=1,
     )
     scheduler.start()
-    log.info(
-        "Scheduler activo: L-V %02d:%02d %s. Ctrl-C para salir.",
-        cfg.poll_hour,
-        cfg.poll_minute,
-        cfg.timezone,
-    )
+    log.info("Scheduler activo: %s %s. Ctrl-C para salir.", desc, cfg.timezone)
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:

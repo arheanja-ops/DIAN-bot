@@ -41,6 +41,7 @@ class Config:
     url: str = "https://agendamiento.dian.gov.co/"
     poll_hour: int = 8  # hora local (L-V) para la consulta diaria
     poll_minute: int = 0
+    poll_interval_min: int = 0  # si >0, consulta cada N min en vez del cron diario
     timezone: str = "America/Bogota"
     headless: bool = True
     nav_timeout_ms: int = 45000
@@ -66,6 +67,7 @@ class Config:
             url=_get("DIAN_URL", "https://agendamiento.dian.gov.co/"),
             poll_hour=int(_get("POLL_HOUR", "8")),
             poll_minute=int(_get("POLL_MINUTE", "0")),
+            poll_interval_min=int(_get("POLL_INTERVAL_MIN", "0")),
             timezone=_get("TZ", "America/Bogota"),
             headless=_get("HEADLESS", "true").lower() != "false",
             state_path=_get("STATE_PATH", "state/last_availability.json"),
