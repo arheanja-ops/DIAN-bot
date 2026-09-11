@@ -1,0 +1,75 @@
+name: App · Deploy scraper
+
+# Regla: el MERGE A MAIN dispara el deploy. Los PR solo corren tests (ci.yml).
+# Solo cuando cambia el código de la app o la imagen.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "dian_bot/**"
+      - "lambda_handler.py"
+      - "Dockerfile"
+      - "requirements.txt"
+      - ".github/workflows/app.yml"
+
+concurrency:
+  group: app-deploy
+  cancel-in-progress: false
+
+permissions:
+  id-token: write # para OIDC
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: dianbot-scraper
+  LAMBDA: dianbot-scraper
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production # requiere aprobación si el environment la exige
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar credenciales AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login a ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build y push de la imagen (arm64)
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          IMAGE="$REGISTRY/$ECR_REPO:${GITHUB_SHA::12}"
+          IMAGE_LATEST="$REGISTRY/$ECR_REPO:latest"
+          docker buildx build --platform linux/arm64 \
+            -t "$IMAGE" -t "$IMAGE_LATEST" --push .
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Actualizar la Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name "$LAMBDA" \
+            --image-uri "$IMAGE" \
+            --query 'LastUpdateStatus' --output text
+          aws lambda wait function-updated --function-name "$LAMBDA"
+
+      - name: Resumen bonito
+        run: |
+          {
+            echo "## 🚀 Deploy de la app completado"
+            echo ""
+            echo "| Campo | Valor |"
+            echo "|---|---|"
+            echo "| Imagen | \`${IMAGE}\` |"
+            echo "| Lambda | \`${LAMBDA}\` |"
+            echo "| Commit | \`${GITHUB_SHA::12}\` |"
+            echo ""
+            echo "La función quedó actualizada y activa. ✅"
+          } >> "$GITHUB_STEP_SUMMARY"

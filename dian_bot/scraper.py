@@ -56,11 +56,32 @@ class ScrapeError(RuntimeError):
     """Error estructural: el sitio cambió y el flujo no pudo completarse."""
 
 
+def _chromium_args() -> list[str]:
+    """Flags de Chromium para correr en entornos restringidos (AWS Lambda).
+
+    Lambda no tiene GPU, dbus ni /dev/shm utilizable y solo /tmp es escribible.
+    Sin estos flags Chromium aborta ("GPU process isn't usable. Goodbye.").
+    En local son inocuos.
+    """
+    return [
+        "--no-sandbox",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+        "--disable-dev-shm-usage",
+        "--single-process",
+        "--no-zygote",
+        "--disable-setuid-sandbox",
+        "--disable-dbus",
+    ]
+
+
 async def _accept_consent(page: Page) -> None:
     try:
         cb = page.locator("label:has-text('Acepto') input[type=checkbox]").first
-        if await cb.count() and not await cb.is_checked():
-            await cb.check(timeout=4000)
+        if await cb.count():
+            await cb.wait_for(state="visible", timeout=15000)
+            if not await cb.is_checked():
+                await cb.check(timeout=4000)
     except PWTimeout:
         pass
     for label in ("Si", "Sí", "Aceptar", "Continuar"):
@@ -75,16 +96,30 @@ async def _accept_consent(page: Page) -> None:
 
 
 async def _enter_agendar(page: Page) -> None:
+    # Esperar a que la SPA renderice la pantalla de Inicio (en Lambda con
+    # --single-process la carga es más lenta que en local).
+    try:
+        await page.wait_for_selector(
+            "[nombre='btnSolicitarCita']", timeout=25000, state="visible"
+        )
+    except PWTimeout:
+        raise ScrapeError("La pantalla de Inicio no cargó (SPA lenta o cambió)")
+
     for sel in (
-        "div:has-text('Programe cita')",
         "[nombre='btnSolicitarCita']",
+        "div:has-text('Programe cita')",
         "text=Agendar cita",
     ):
+        loc = page.locator(sel).first
         try:
-            loc = page.locator(sel).first
+            if not await loc.count():
+                continue
             await loc.scroll_into_view_if_needed(timeout=3000)
-            await loc.click(timeout=5000)
-            await page.wait_for_timeout(1500)
+            await loc.click(timeout=6000)
+            # Confirmar que avanzamos: PasoUno debe aparecer.
+            await page.wait_for_selector(
+                "[nombre='TipoPersona']", timeout=15000, state="visible"
+            )
             return
         except PWTimeout:
             continue
@@ -206,7 +241,10 @@ async def check_availability(cfg: Config) -> Availability:
         )
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=cfg.headless)
+        browser = await p.chromium.launch(
+            headless=cfg.headless,
+            args=_chromium_args(),
+        )
         ctx = await browser.new_context(user_agent=_UA, locale="es-CO")
         page = await ctx.new_page()
         page.set_default_timeout(cfg.nav_timeout_ms)

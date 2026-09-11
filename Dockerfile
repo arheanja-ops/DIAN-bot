@@ -21,10 +21,14 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 COPY dian_bot ./dian_bot
 COPY lambda_handler.py .
 
-# Lambda solo permite escribir en /tmp -> estado e histórico van allí.
+# Lambda solo permite escribir en /tmp -> estado, histórico y caches de Chromium.
 ENV STATE_PATH=/tmp/last_availability.json \
     HISTORY_PATH=/tmp/history.jsonl \
-    HEADLESS=true
+    HEADLESS=true \
+    HOME=/tmp \
+    XDG_CACHE_HOME=/tmp/.cache \
+    XDG_CONFIG_HOME=/tmp/.config \
+    FONTCONFIG_PATH=/etc/fonts
 
 # El Runtime Interface Client hace de entrypoint de Lambda.
 ENTRYPOINT ["python", "-m", "awslambdaric"]

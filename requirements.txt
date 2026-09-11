@@ -2,5 +2,6 @@ playwright==1.47.0
 python-telegram-bot==21.6
 APScheduler==3.10.4
 python-dotenv==1.0.1
+boto3==1.35.24
 pytest==8.3.3
 pytest-asyncio==0.24.0
