@@ -16,7 +16,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from .config import Config, ConfigError
-from .notifier import build_message, notify
+from .notifier import build_message, build_no_availability_message, notify
 from .scraper import ScrapeError, check_availability
 from .state import append_history, load_last, save, should_notify
 
@@ -49,15 +49,31 @@ async def run_once(cfg: Config, *, dry_run: bool = False) -> bool:
     )
 
     prev = load_last(cfg.state_path)
-    notify_now = should_notify(prev, current)
+    is_new_hit = should_notify(prev, current)
     save(cfg.state_path, current)
     append_history(cfg.history_path, current)
 
-    if not notify_now:
-        log.info("Sin cambios notificables (no hay cita nueva).")
-        return False
+    # Decidir qué (y si) notificar según el modo:
+    #  - Hay cita nueva -> siempre mensaje URGENTE (en cualquier modo).
+    #  - No hay cita:
+    #      only_hits -> callar.
+    #      always    -> mensaje informativo "sin citas".
+    if current.available and is_new_hit:
+        msg = build_message(current, cfg.url)
+    elif current.available and not is_new_hit:
+        # Hay citas pero ya te avisé de estas mismas; en 'always' reafirmo, en 'only_hits' callo.
+        if cfg.notify_mode == "always":
+            msg = build_message(current, cfg.url)
+        else:
+            log.info("Citas ya notificadas antes; sin cambios.")
+            return False
+    else:  # no hay citas
+        if cfg.notify_mode == "always":
+            msg = build_no_availability_message(current)
+        else:
+            log.info("Sin citas; modo only_hits, no se notifica.")
+            return False
 
-    msg = build_message(current, cfg.url)
     if dry_run:
         log.info("[DRY-RUN] Notificaría:\n%s", msg)
         return True

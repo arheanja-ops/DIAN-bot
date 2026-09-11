@@ -16,15 +16,24 @@ log = logging.getLogger(__name__)
 
 
 def build_message(av: Availability, url: str) -> str:
-    """Construye el mensaje de alerta en Markdown."""
+    """Mensaje URGENTE cuando hay citas disponibles: 'entra YA' + horarios + URL."""
     slots = "\n".join(f"  • {s}" for s in av.slots[:15]) or "  • (ver en el sitio)"
     return (
-        f"🔔 *Citas DIAN disponibles*\n"
+        f"🚨🚨 *¡HAY CITAS EN LA DIAN — ENTRA YA!* 🚨🚨\n\n"
         f"*Trámite:* {av.servicio}\n"
         f"*Ciudad:* {av.ciudad}\n"
-        f"*Cuándo:*\n{slots}\n\n"
-        f"Agenda aquí (requiere completar el captcha):\n{url}\n\n"
-        f"_Consultado: {av.checked_at}_"
+        f"*Horarios:*\n{slots}\n\n"
+        f"👉 *Agenda ahora mismo* (debes completar el captcha):\n{url}\n\n"
+        f"_Las citas vuelan. Consultado: {av.checked_at}_"
+    )
+
+
+def build_no_availability_message(av: Availability) -> str:
+    """Mensaje informativo cuando NO hay citas (modo always / heartbeat)."""
+    return (
+        f"🔍 Consulta DIAN: *sin citas* por ahora.\n"
+        f"{av.servicio} · {av.ciudad}\n"
+        f"_Consultado: {av.checked_at}_ — te aviso apenas aparezca una."
     )
 
 

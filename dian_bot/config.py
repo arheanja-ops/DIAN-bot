@@ -46,6 +46,7 @@ class Config:
     nav_timeout_ms: int = 45000
     state_path: str = "state/last_availability.json"
     history_path: str = "state/history.jsonl"
+    notify_mode: str = "only_hits"  # only_hits | always
     log_level: str = "INFO"
     extra_chat_ids: list[str] = field(default_factory=list)
 
@@ -69,6 +70,7 @@ class Config:
             headless=_get("HEADLESS", "true").lower() != "false",
             state_path=_get("STATE_PATH", "state/last_availability.json"),
             history_path=_get("HISTORY_PATH", "state/history.jsonl"),
+            notify_mode=_get("NOTIFY_MODE", "only_hits").lower(),
             log_level=_get("LOG_LEVEL", "INFO").upper(),
         )
 

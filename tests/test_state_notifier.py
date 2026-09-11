@@ -3,7 +3,7 @@
 No dependen de red ni de navegador. Cubren las reglas de negocio críticas:
 cuándo notificar y qué contiene el mensaje.
 """
-from dian_bot.notifier import build_message
+from dian_bot.notifier import build_message, build_no_availability_message
 from dian_bot.state import Availability, save, load_last, should_notify, append_history
 
 
@@ -65,6 +65,21 @@ def test_mensaje_incluye_datos_clave():
     assert "Medellín" in msg
     assert "08:30" in msg
     assert "agendamiento.dian.gov.co" in msg
+
+
+def test_mensaje_urgente_dice_entra_ya_y_url():
+    msg = build_message(_av(True, ["08:30"]), "https://agendamiento.dian.gov.co/")
+    assert "ENTRA YA" in msg.upper()
+    assert "agendamiento.dian.gov.co" in msg
+    assert "08:30" in msg
+
+
+def test_mensaje_sin_citas_es_informativo():
+    msg = build_no_availability_message(_av(False))
+    assert "sin citas" in msg.lower()
+    assert "Medellín" in msg
+    # No debe gritar 'entra ya' cuando no hay nada
+    assert "ENTRA YA" not in msg.upper()
 
 
 def test_append_history_agrega_lineas(tmp_path):

@@ -1,10 +1,10 @@
 name: Consulta citas DIAN
 
-# 10 consultas/día TODOS los días (incl. fin de semana, para descubrir el patrón
-# de liberación de cupos). Horas UTC = 06:00–23:00 America/Bogota (UTC-5).
+# TEMPORAL: cada 30 min, todos los días. GitHub retrasa/omite crons gratuitos,
+# así que la frecuencia real será menor (por eso migraremos a EventBridge+Lambda).
 on:
   schedule:
-    - cron: "0 1,3,4,11,13,15,17,19,21,23 * * *"
+    - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -64,6 +64,7 @@ jobs:
           DIAN_CATEGORIA: Devoluciones
           DIAN_CIUDAD: Medellín
           TZ: America/Bogota
+          NOTIFY_MODE: always
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             python -m dian_bot.main --dry-run
