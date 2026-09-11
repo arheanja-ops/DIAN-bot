@@ -24,7 +24,7 @@ def _mocks(monkeypatch):
         sent.append((chat_id, text))
 
     monkeypatch.setattr(lh, "_send", fake_send)
-    monkeypatch.setattr(lh, "_self_invoke_scrape", lambda: invoked.append(True))
+    monkeypatch.setattr(lh, "_self_invoke_scrape", lambda categoria=None: invoked.append(True))
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "123")
     monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET", raising=False)
     lh._sent = sent
@@ -49,6 +49,27 @@ def test_consultar_dispara_scrape_async(_mocks):
     assert resp["statusCode"] == 200
     assert invoked == [True]  # se auto-invocó el scrape
     assert any("Consultando" in t for _, t in sent)
+
+
+def test_consultar_con_categoria_valida(monkeypatch, _mocks):
+    sent, _ = _mocks
+    captured = {}
+    monkeypatch.setattr(lh, "_self_invoke_scrape", lambda categoria=None: captured.setdefault("cat", categoria))
+    lh._handle_webhook(_event("/consultar rut"))
+    assert captured["cat"] == "RUT y orientación TAC"
+
+
+def test_consultar_categoria_invalida_avisa(_mocks):
+    sent, invoked = _mocks
+    lh._handle_webhook(_event("/consultar noexiste"))
+    assert any("No conozco" in t for _, t in sent)
+    assert invoked == []  # no dispara scrape
+
+
+def test_categorias_lista(_mocks):
+    sent, _ = _mocks
+    lh._handle_webhook(_event("/categorias"))
+    assert any("Categorías consultables" in t for _, t in sent)
 
 
 def test_ayuda_responde_help(_mocks):
@@ -78,7 +99,7 @@ def test_secret_valido_pasa(monkeypatch, _mocks):
 def test_router_scrape_por_defecto(monkeypatch):
     # Evento sin marcadores de API Gateway -> acción scrape.
     called = {}
-    monkeypatch.setattr(lh, "_run_scrape", lambda: called.setdefault("scrape", True) or {"statusCode": 200})
+    monkeypatch.setattr(lh, "_run_scrape", lambda categoria=None: called.setdefault("scrape", True) or {"statusCode": 200})
     monkeypatch.setattr(lh, "_load_secrets_from_ssm", lambda: None)
     lh.handler({"action": "scrape"}, None)
     assert called.get("scrape") is True
