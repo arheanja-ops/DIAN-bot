@@ -17,8 +17,9 @@ resource "aws_lambda_function" "scraper" {
       STATE_PATH         = "/tmp/last.json"
       HISTORY_PATH       = "/tmp/history.jsonl"
       # Nombres de los parámetros SSM con los secretos (el handler los lee).
-      SSM_TOKEN_PARAM   = aws_ssm_parameter.telegram_token.name
-      SSM_CHAT_ID_PARAM = aws_ssm_parameter.telegram_chat_id.name
+      SSM_TOKEN_PARAM          = aws_ssm_parameter.telegram_token.name
+      SSM_CHAT_ID_PARAM        = aws_ssm_parameter.telegram_chat_id.name
+      SSM_WEBHOOK_SECRET_PARAM = aws_ssm_parameter.webhook_secret.name
     }
   }
 

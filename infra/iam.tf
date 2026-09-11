@@ -32,6 +32,7 @@ resource "aws_iam_role_policy" "ssm_read" {
       Resource = [
         aws_ssm_parameter.telegram_token.arn,
         aws_ssm_parameter.telegram_chat_id.arn,
+        aws_ssm_parameter.webhook_secret.arn,
       ]
     }]
   })
