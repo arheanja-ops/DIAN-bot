@@ -54,8 +54,12 @@ jobs:
         run: |
           IMAGE="$REGISTRY/$ECR_REPO:${GITHUB_SHA::12}"
           IMAGE_LATEST="$REGISTRY/$ECR_REPO:latest"
+          # Lambda solo acepta manifiesto Docker v2 (no OCI). Con una sola
+          # plataforma, --provenance=false produce el manifiesto Docker correcto.
           docker buildx build --platform linux/arm64 \
-            -t "$IMAGE" -t "$IMAGE_LATEST" --push .
+            --provenance=false \
+            -t "$IMAGE" -t "$IMAGE_LATEST" \
+            --push .
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
 
       - name: Actualizar la Lambda
