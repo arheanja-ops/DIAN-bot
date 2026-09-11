@@ -211,8 +211,22 @@ async def check_availability(cfg: Config) -> Availability:
         page = await ctx.new_page()
         page.set_default_timeout(cfg.nav_timeout_ms)
         try:
-            await page.goto(cfg.url, wait_until="networkidle", timeout=cfg.nav_timeout_ms)
-            await page.wait_for_timeout(2500)
+            # Navegación con reintento: el sitio de la DIAN a veces tarda o falla.
+            last_err: Exception | None = None
+            for attempt in range(1, 3):
+                try:
+                    await page.goto(
+                        cfg.url, wait_until="domcontentloaded", timeout=cfg.nav_timeout_ms
+                    )
+                    await page.wait_for_timeout(2500)
+                    last_err = None
+                    break
+                except PWTimeout as e:
+                    last_err = e
+                    log.warning("Timeout cargando el sitio (intento %d/2)", attempt)
+                    await page.wait_for_timeout(2000)
+            if last_err is not None:
+                raise ScrapeError(f"el sitio no cargó: {type(last_err).__name__}")
 
             await _accept_consent(page)
             await _enter_agendar(page)
@@ -225,31 +239,48 @@ async def check_availability(cfg: Config) -> Availability:
                 raise ScrapeError("PasoUno: no se pudo seleccionar la categoría")
 
             # Tras elegir categoría puede aparecer un modal de "sin especialidades"
-            await page.wait_for_timeout(1500)
+            # (significa que NO hay ningún trámite/ciudad con cupo en este momento).
+            await page.wait_for_timeout(1800)
             if await _modal_no_availability(page):
-                return result(False, [], note="sin especialidades para devoluciones")
+                return result(False, [], note="sin trámites de devolución disponibles")
 
-            # Trámite específico (si el framework lo pide como combo aparte)
-            await _pick(page, "Servicios", cfg.servicio)
+            # Modelo real: el combo 'Servicios' es un <select> cuyas opciones son
+            # los trámites disponibles AHORA, cada una puede incluir la ciudad
+            # (ej. "Cali - Solicitud de devolución..."). Las opciones que aparecen
+            # son las que tienen cupo. Leemos TODAS (city-agnostic).
+            options = await _read_service_options(page)
+            # Filtrar el placeholder vacío y quedarnos con trámites reales.
+            services = [o for o in options if o and len(o) > 3]
 
-            # Avanzar a PasoDos
-            try:
-                await page.locator("[nombre='btnSiguienteBlock']").first.click(timeout=5000)
-                await page.wait_for_timeout(2500)
-            except PWTimeout:
-                # Si no avanza y no hubo modal, tratamos como sin disponibilidad.
+            if not services:
+                # No hay opciones -> confirmar si hay modal de sin-citas.
                 if await _modal_no_availability(page):
-                    return result(False, [], note="sin disponibilidad en PasoUno")
-                raise ScrapeError("No se pudo avanzar a PasoDos")
+                    return result(False, [], note="sin trámites de devolución disponibles")
+                return result(False, [], note="combo de trámites vacío")
 
-            # PasoDos: ciudad + disponibilidad
-            await _pick(page, "Ciudades", cfg.ciudad)
-            await page.wait_for_timeout(1500)
-
-            if await _modal_no_availability(page):
-                return result(False, [], note="ModalSinCitas en PasoDos")
-
-            slots = await _read_slots(page)
-            return result(len(slots) > 0, slots)
+            # Opcional: si el usuario configuró un filtro de ciudad, marcar si
+            # aparece, pero SIEMPRE reportar todos los trámites disponibles.
+            return result(True, services, note=f"{len(services)} trámite(s) disponible(s)")
         finally:
             await browser.close()
+
+
+async def _read_service_options(page: Page) -> list[str]:
+    """Lee todas las opciones del combo 'Servicios' (un <select> nativo).
+
+    Devuelve la lista de textos de las opciones disponibles (trámites, que pueden
+    incluir la ciudad). Excluye el placeholder vacío.
+    """
+    try:
+        return await page.evaluate(
+            """() => {
+                const el = document.querySelector("[nombre='Servicios']");
+                if (!el) return [];
+                const sel = el.querySelector('select') || el;
+                return [...sel.querySelectorAll('option')]
+                    .map(o => (o.text || '').trim())
+                    .filter(Boolean);
+            }"""
+        )
+    except PWTimeout:
+        return []

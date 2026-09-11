@@ -16,24 +16,32 @@ log = logging.getLogger(__name__)
 
 
 def build_message(av: Availability, url: str) -> str:
-    """Mensaje URGENTE cuando hay citas disponibles: 'entra YA' + horarios + URL."""
-    slots = "\n".join(f"  • {s}" for s in av.slots[:15]) or "  • (ver en el sitio)"
+    """Mensaje URGENTE cuando hay citas disponibles: 'entra YA' + trámites/ciudades + URL."""
+    items = "\n".join(f"  • {s}" for s in av.slots[:20]) or "  • (ver en el sitio)"
     return (
         f"🚨🚨 *¡HAY CITAS EN LA DIAN — ENTRA YA!* 🚨🚨\n\n"
-        f"*Trámite:* {av.servicio}\n"
-        f"*Ciudad:* {av.ciudad}\n"
-        f"*Horarios:*\n{slots}\n\n"
+        f"*Categoría:* {av.servicio}\n"
+        f"*Trámites/ciudades con cupo ahora:*\n{items}\n\n"
         f"👉 *Agenda ahora mismo* (debes completar el captcha):\n{url}\n\n"
-        f"_Las citas vuelan. Consultado: {av.checked_at}_"
+        f"_Las citas vuelan (duran minutos). Consultado: {av.checked_at}_"
     )
 
 
 def build_no_availability_message(av: Availability) -> str:
     """Mensaje informativo cuando NO hay citas (modo always / heartbeat)."""
     return (
-        f"🔍 Consulta DIAN: *sin citas* por ahora.\n"
-        f"{av.servicio} · {av.ciudad}\n"
+        f"🔍 Consulta DIAN: *sin citas* de {av.servicio} por ahora "
+        f"(ninguna ciudad).\n"
         f"_Consultado: {av.checked_at}_ — te aviso apenas aparezca una."
+    )
+
+
+def build_error_message(detail: str) -> str:
+    """Mensaje cuando la consulta falló (timeout/sitio caído). Solo modo always."""
+    return (
+        f"⚠️ Consulta DIAN: *no pude verificar* esta vez.\n"
+        f"Motivo: {detail}\n"
+        f"_Reintentaré en la próxima ronda._"
     )
 
 

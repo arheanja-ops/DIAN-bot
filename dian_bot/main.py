@@ -16,7 +16,12 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from .config import Config, ConfigError
-from .notifier import build_message, build_no_availability_message, notify
+from .notifier import (
+    build_error_message,
+    build_message,
+    build_no_availability_message,
+    notify,
+)
 from .scraper import ScrapeError, check_availability
 from .state import append_history, load_last, save, should_notify
 
@@ -39,6 +44,13 @@ async def run_once(cfg: Config, *, dry_run: bool = False) -> bool:
         current = await check_availability(cfg)
     except ScrapeError as e:
         log.error("Scrape falló (estructura del sitio): %s", e)
+        # En modo always avisamos que no se pudo verificar (evita silencio).
+        if cfg.notify_mode == "always" and not dry_run:
+            await notify(
+                cfg.telegram_token,
+                cfg.all_chat_ids,
+                build_error_message(str(e)),
+            )
         return False
 
     log.info(

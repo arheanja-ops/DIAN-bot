@@ -60,25 +60,25 @@ def test_load_inexistente_devuelve_none(tmp_path):
 
 
 def test_mensaje_incluye_datos_clave():
-    msg = build_message(_av(True, ["08:30", "09:00"]), "https://agendamiento.dian.gov.co/")
-    assert "Devolución IVA" in msg
-    assert "Medellín" in msg
-    assert "08:30" in msg
+    msg = build_message(
+        _av(True, ["Bogotá - Solicitud de devolución", "Cali - Solicitud de devolución"]),
+        "https://agendamiento.dian.gov.co/",
+    )
+    assert "Bogotá" in msg
+    assert "Cali" in msg
     assert "agendamiento.dian.gov.co" in msg
 
 
 def test_mensaje_urgente_dice_entra_ya_y_url():
-    msg = build_message(_av(True, ["08:30"]), "https://agendamiento.dian.gov.co/")
+    msg = build_message(_av(True, ["Cali - Solicitud de devolución"]), "https://agendamiento.dian.gov.co/")
     assert "ENTRA YA" in msg.upper()
     assert "agendamiento.dian.gov.co" in msg
-    assert "08:30" in msg
+    assert "Cali" in msg
 
 
 def test_mensaje_sin_citas_es_informativo():
     msg = build_no_availability_message(_av(False))
     assert "sin citas" in msg.lower()
-    assert "Medellín" in msg
-    # No debe gritar 'entra ya' cuando no hay nada
     assert "ENTRA YA" not in msg.upper()
 
 
