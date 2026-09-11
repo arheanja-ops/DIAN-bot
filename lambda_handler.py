@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import os
+from dataclasses import replace
 
 logging.getLogger().setLevel(logging.INFO)
 log = logging.getLogger("dian_bot.lambda")
@@ -49,25 +50,54 @@ def _load_secrets_from_ssm() -> None:
 
 # --------------------------- acción: scraping ---------------------------
 
-def _run_scrape() -> dict:
+def _run_scrape(categoria: str | None = None) -> dict:
     from dian_bot.config import Config
     from dian_bot.main import run_once
 
     cfg = Config.from_env()
+    if categoria:
+        # Override puntual de la categoría para consultas a demanda.
+        cfg = replace(cfg, categoria=categoria, notify_mode="always")
     notified = asyncio.run(run_once(cfg))
     return {"statusCode": 200, "notified": bool(notified)}
 
 
 # --------------------------- acción: webhook ---------------------------
 
+# Categorías consultables por comando (mapa: alias en minúscula -> nombre real
+# del combo Categorias en la DIAN). El cron automático solo usa "Devoluciones".
+_CATEGORIAS = {
+    "devoluciones": "Devoluciones",
+    "devolucion": "Devoluciones",
+    "iva": "Devoluciones",
+    "rut": "RUT y orientación TAC",
+    "aduanas": "Aduanas",
+    "cobranzas": "Cobranzas",
+    "recaudo": "Recaudo (Corrección inconsistencias)",
+    "defensoria": "Defensoría",
+    "conferencias": "Conferencias o capacitaciones",
+    "naf": "Autogestión servicios en línea con NAF",
+    "inconsistencias": "Inconsistencias Grandes Contribuyentes",
+}
+
 _HELP = (
     "🤖 *Bot de citas DIAN*\n\n"
-    "Comandos:\n"
-    "• /consultar — revisa YA si hay citas de devolución\n"
-    "• /estado — última consulta registrada\n"
-    "• /ayuda — este mensaje\n\n"
-    "Además te aviso automático L-V de 7am a 5pm."
+    "*Comandos:*\n"
+    "• `/consultar` — revisa YA citas de *devolución IVA*\n"
+    "• `/consultar <categoría>` — revisa otra categoría\n"
+    "   ej: `/consultar rut`, `/consultar cobranzas`\n"
+    "• `/categorias` — lista lo que puedo consultar\n"
+    "• `/estado` — última consulta\n"
+    "• `/ayuda` — este mensaje\n\n"
+    "_Automático (cron): solo devolución IVA, L-V 7am-5pm._\n"
+    "_El resto es a demanda, cuando quieras._"
 )
+
+_CATEGORIAS_MSG = "📋 *Categorías consultables:*\n" + "\n".join(
+    f"• `{alias}`" for alias in ["devoluciones", "rut", "aduanas", "cobranzas",
+                                  "recaudo", "defensoria", "conferencias", "naf",
+                                  "inconsistencias"]
+) + "\n\nUsa: `/consultar <categoría>`"
 
 
 async def _send(chat_id: str, text: str) -> None:
@@ -82,15 +112,18 @@ async def _send(chat_id: str, text: str) -> None:
         )
 
 
-def _self_invoke_scrape() -> None:
+def _self_invoke_scrape(categoria: str | None = None) -> None:
     """Auto-invoca esta Lambda en modo async para hacer el scrape sin bloquear
-    el webhook (el scraping tarda más que el timeout de respuesta a Telegram)."""
+    el webhook. Puede pasar una categoría a consultar (default: la del cron)."""
     import boto3
 
+    payload = {"action": "scrape", "forced": True}
+    if categoria:
+        payload["categoria"] = categoria
     boto3.client("lambda").invoke(
         FunctionName=os.environ["AWS_LAMBDA_FUNCTION_NAME"],
-        InvocationType="Event",  # async
-        Payload=json.dumps({"action": "scrape", "forced": True}).encode(),
+        InvocationType="Event",
+        Payload=json.dumps(payload).encode(),
     )
 
 
@@ -115,8 +148,24 @@ def _handle_webhook(event: dict) -> dict:
     chat_id = str((msg.get("chat") or {}).get("id") or os.environ["TELEGRAM_CHAT_ID"])
 
     if text.startswith("/consultar"):
-        asyncio.run(_send(chat_id, "🔎 Consultando la DIAN ahora mismo, te aviso en unos segundos…"))
-        _self_invoke_scrape()
+        # /consultar [categoria]  -> default: devolución IVA (la del cron)
+        parts = text.split(maxsplit=1)
+        categoria = None
+        etiqueta = "devolución IVA"
+        if len(parts) > 1:
+            alias = parts[1].strip().lower()
+            categoria = _CATEGORIAS.get(alias)
+            if categoria is None:
+                asyncio.run(_send(
+                    chat_id,
+                    f"❓ No conozco la categoría '{alias}'. Usa /categorias para ver las opciones.",
+                ))
+                return {"statusCode": 200, "body": "ok"}
+            etiqueta = categoria
+        asyncio.run(_send(chat_id, f"🔎 Consultando *{etiqueta}* en la DIAN, te aviso en unos segundos…"))
+        _self_invoke_scrape(categoria)
+    elif text.startswith("/categorias"):
+        asyncio.run(_send(chat_id, _CATEGORIAS_MSG))
     elif text.startswith("/estado"):
         asyncio.run(_send(chat_id, _estado_text()))
     else:  # /ayuda, /start o cualquier otra cosa
@@ -153,4 +202,5 @@ def handler(event, context):
         return _handle_webhook(event)
 
     # Por defecto (EventBridge / invocación directa): scraping.
-    return _run_scrape()
+    categoria = event.get("categoria") if isinstance(event, dict) else None
+    return _run_scrape(categoria)
