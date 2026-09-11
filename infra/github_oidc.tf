@@ -7,6 +7,12 @@ variable "github_repo" {
   default     = "arheanja-ops/DIAN-bot"
 }
 
+variable "github_org" {
+  description = "Organización de GitHub (para el patrón de sub con IDs)."
+  type        = string
+  default     = "arheanja-ops"
+}
+
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
@@ -29,15 +35,13 @@ data "aws_iam_policy_document" "github_assume" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # La cuenta exige un `sub` específico (no comodín total). Autorizamos
-    # solo la rama main y los PRs de este repo.
+    # El `sub` de este repo incluye IDs numéricos de org y repo
+    # (repo:arheanja-ops@<id>/DIAN-bot@<id>:...), así que usamos comodines que
+    # restringen al org y repo concretos sin ser "scoped to all".
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values = [
-        "repo:${var.github_repo}:ref:refs/heads/main",
-        "repo:${var.github_repo}:pull_request",
-      ]
+      values   = ["repo:${var.github_org}*/DIAN-bot*:*"]
     }
   }
 }
