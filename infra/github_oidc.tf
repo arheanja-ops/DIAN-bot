@@ -87,6 +87,21 @@ resource "aws_iam_role_policy" "github_deploy" {
         Action   = ["lambda:UpdateFunctionCode", "lambda:GetFunction"]
         Resource = aws_lambda_function.scraper.arn
       },
+      {
+        Sid    = "TerraformState"
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
+        Resource = [
+          "arn:aws:s3:::dianbot-tfstate-${local.account_id}",
+          "arn:aws:s3:::dianbot-tfstate-${local.account_id}/*",
+        ]
+      },
+      {
+        Sid      = "TerraformLock"
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
+        Resource = "arn:aws:dynamodb:${var.aws_region}:${local.account_id}:table/dianbot-tflock"
+      },
     ]
   })
 }
