@@ -9,11 +9,11 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "dianbot-tfstate-786567028012"
-    key            = "dian-bot/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "dianbot-tflock"
-    encrypt        = true
+    bucket       = "dianbot-tfstate-080891698277"
+    key          = "dian-bot/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
   }
 }
 

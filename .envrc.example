@@ -9,6 +9,10 @@ fi
 # Config aislada de GitHub CLI para este proyecto (ajusta el nombre si prefieres).
 export GH_CONFIG_DIR="$HOME/.config/gh-dianbot"
 
+# Perfil AWS de la cuenta dedicada ai-platform-arheanja (080891698277), donde
+# vive la infra de DIAN-bot desde la migración del 2026-09-18.
+export AWS_PROFILE="ai-platform"
+
 if [ -f ".env" ]; then
   dotenv .env
 fi
