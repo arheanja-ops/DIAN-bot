@@ -51,9 +51,8 @@ resource "aws_iam_role" "github_deploy" {
   assume_role_policy = data.aws_iam_policy_document.github_assume.json
 }
 
-# Permisos de deploy: push a ECR y actualizar la Lambda. (El CI de infra usa
-# permisos más amplios vía un rol aparte o el mismo, según se decida; aquí
-# damos lo necesario para el pipeline de la app.)
+# Permisos de deploy. Este rol lo usan ambos pipelines (app.yml e infra.yml):
+# push a ECR + update Lambda (app) y gestión de la infra vía Terraform (infra).
 resource "aws_iam_role_policy" "github_deploy" {
   name = "${var.project}-github-deploy"
   role = aws_iam_role.github_deploy.id
@@ -88,19 +87,41 @@ resource "aws_iam_role_policy" "github_deploy" {
         Resource = aws_lambda_function.scraper.arn
       },
       {
+        # Gestión de la infra vía Terraform (infra.yml). Amplio por necesidad
+        # del plan/apply; acotado a los servicios que usa este proyecto.
+        Sid    = "InfraManage"
+        Effect = "Allow"
+        Action = [
+          "ecr:*",
+          "lambda:*",
+          "apigateway:*",
+          "scheduler:*",
+          "ssm:*",
+          "logs:*",
+          "iam:GetRole",
+          "iam:PassRole",
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:PutRolePolicy",
+          "iam:DeleteRolePolicy",
+          "iam:GetRolePolicy",
+          "iam:ListRolePolicies",
+          "iam:ListAttachedRolePolicies",
+          "iam:AttachRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:TagRole",
+          "iam:GetOpenIDConnectProvider",
+        ]
+        Resource = "*"
+      },
+      {
         Sid    = "TerraformState"
         Effect = "Allow"
-        Action = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
         Resource = [
           "arn:aws:s3:::dianbot-tfstate-${local.account_id}",
           "arn:aws:s3:::dianbot-tfstate-${local.account_id}/*",
         ]
-      },
-      {
-        Sid      = "TerraformLock"
-        Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
-        Resource = "arn:aws:dynamodb:${var.aws_region}:${local.account_id}:table/dianbot-tflock"
       },
     ]
   })
