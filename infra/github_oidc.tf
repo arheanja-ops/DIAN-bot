@@ -98,6 +98,7 @@ resource "aws_iam_role_policy" "github_deploy" {
           "scheduler:*",
           "ssm:*",
           "logs:*",
+          "budgets:*",
           "iam:GetRole",
           "iam:PassRole",
           "iam:CreateRole",
