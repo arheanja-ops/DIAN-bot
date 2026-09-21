@@ -50,14 +50,21 @@ def _load_secrets_from_ssm() -> None:
 
 # --------------------------- acción: scraping ---------------------------
 
-def _run_scrape(categoria: str | None = None) -> dict:
+def _run_scrape(categoria: str | None = None, forced: bool = False) -> dict:
     from dian_bot.config import Config
     from dian_bot.main import run_once
 
     cfg = Config.from_env()
+    overrides = {}
     if categoria:
         # Override puntual de la categoría para consultas a demanda.
-        cfg = replace(cfg, categoria=categoria, notify_mode="always")
+        overrides["categoria"] = categoria
+    if forced:
+        # Consulta a demanda (/consultar): SIEMPRE responde el resultado, haya
+        # o no citas. El only_hits es solo para el cron automático (no spamear).
+        overrides["notify_mode"] = "always"
+    if overrides:
+        cfg = replace(cfg, **overrides)
     notified = asyncio.run(run_once(cfg))
     return {"statusCode": 200, "notified": bool(notified)}
 
@@ -202,5 +209,7 @@ def handler(event, context):
         return _handle_webhook(event)
 
     # Por defecto (EventBridge / invocación directa): scraping.
+    # forced=True viene de /consultar (a demanda) -> notifica siempre.
     categoria = event.get("categoria") if isinstance(event, dict) else None
-    return _run_scrape(categoria)
+    forced = bool(event.get("forced")) if isinstance(event, dict) else False
+    return _run_scrape(categoria, forced=forced)
