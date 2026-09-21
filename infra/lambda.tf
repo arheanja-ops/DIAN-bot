@@ -52,7 +52,41 @@ resource "aws_scheduler_schedule" "poll" {
   }
 }
 
-# Rol que permite a EventBridge Scheduler invocar la Lambda.
+# --- Heartbeat: aviso de inicio de jornada (L-V 07:00 Bogotá) ---
+resource "aws_scheduler_schedule" "heartbeat_start" {
+  name = "${var.project}-heartbeat-start"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  schedule_expression          = "cron(0 7 ? * MON-FRI *)"
+  schedule_expression_timezone = "America/Bogota"
+
+  target {
+    arn      = aws_lambda_function.scraper.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = jsonencode({ action = "heartbeat", phase = "start" })
+  }
+}
+
+# --- Heartbeat: aviso de fin de jornada (L-V 17:00 Bogotá) ---
+resource "aws_scheduler_schedule" "heartbeat_end" {
+  name = "${var.project}-heartbeat-end"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  schedule_expression          = "cron(0 17 ? * MON-FRI *)"
+  schedule_expression_timezone = "America/Bogota"
+
+  target {
+    arn      = aws_lambda_function.scraper.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = jsonencode({ action = "heartbeat", phase = "end" })
+  }
+}
 resource "aws_iam_role" "scheduler" {
   name = "${var.project}-scheduler-role"
 

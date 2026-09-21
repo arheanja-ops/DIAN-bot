@@ -69,6 +69,40 @@ def _run_scrape(categoria: str | None = None, forced: bool = False) -> dict:
     return {"statusCode": 200, "notified": bool(notified)}
 
 
+# --------------------------- acción: heartbeat ---------------------------
+
+def _run_heartbeat(phase: str) -> dict:
+    """Mensaje de inicio/fin de la jornada de monitoreo (no scrapea).
+
+    phase='start' -> aviso de que empezó el monitoreo (7:00).
+    phase='end'   -> aviso de que terminó por hoy (17:00).
+    """
+    from dian_bot.config import Config
+
+    cfg = Config.from_env()
+    if phase == "end":
+        text = (
+            "🌙 *Monitoreo DIAN finalizado por hoy*\n"
+            "Revisé citas de devolución IVA cada 10 min (7am–5pm). "
+            "Mañana L-V vuelvo a las 7am. Si aparecieron citas, ya te avisé. "
+            "Igual podés usar `/consultar` cuando quieras."
+        )
+    else:
+        text = (
+            "☀️ *Monitoreo DIAN iniciado*\n"
+            "Voy a revisar citas de *devolución IVA* (Videoatención) cada 10 min "
+            "hasta las 5pm. Te aviso apenas aparezca un cupo."
+        )
+    sent = asyncio.run(_send_all(cfg, text))
+    return {"statusCode": 200, "sent": sent}
+
+
+async def _send_all(cfg, text: str) -> int:
+    from dian_bot.notifier import notify
+
+    return await notify(cfg.telegram_token, cfg.all_chat_ids, text)
+
+
 # --------------------------- acción: webhook ---------------------------
 
 # Categorías consultables por comando (mapa: alias en minúscula -> nombre real
@@ -207,6 +241,10 @@ def handler(event, context):
         "requestContext" in event or "rawPath" in event or "httpMethod" in event
     ):
         return _handle_webhook(event)
+
+    # Heartbeat de inicio/fin de jornada (schedules 7:00 y 17:00 L-V).
+    if isinstance(event, dict) and event.get("action") == "heartbeat":
+        return _run_heartbeat(event.get("phase", "start"))
 
     # Por defecto (EventBridge / invocación directa): scraping.
     # forced=True viene de /consultar (a demanda) -> notifica siempre.

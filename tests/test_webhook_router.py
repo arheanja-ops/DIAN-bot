@@ -113,3 +113,12 @@ def test_router_scrape_forced_desde_consultar(monkeypatch):
     monkeypatch.setattr(lh, "_load_secrets_from_ssm", lambda: None)
     lh.handler({"action": "scrape", "forced": True}, None)
     assert called.get("scrape") == (None, True)
+
+
+def test_router_heartbeat(monkeypatch):
+    # Los schedules de 7am/5pm invocan con action=heartbeat -> _run_heartbeat.
+    called = {}
+    monkeypatch.setattr(lh, "_run_heartbeat", lambda phase: called.setdefault("phase", phase) or {"statusCode": 200})
+    monkeypatch.setattr(lh, "_load_secrets_from_ssm", lambda: None)
+    lh.handler({"action": "heartbeat", "phase": "end"}, None)
+    assert called.get("phase") == "end"
