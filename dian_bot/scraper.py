@@ -23,6 +23,7 @@ confirmación, fuera del alcance de la consulta de disponibilidad.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -68,8 +69,6 @@ def _chromium_args() -> list[str]:
         "--disable-gpu",
         "--disable-software-rasterizer",
         "--disable-dev-shm-usage",
-        "--single-process",
-        "--no-zygote",
         "--disable-setuid-sandbox",
         "--disable-dbus",
     ]
@@ -241,10 +240,13 @@ async def check_availability(cfg: Config) -> Availability:
         )
 
     async with async_playwright() as p:
+        log.info("launching chromium")
         browser = await p.chromium.launch(
             headless=cfg.headless,
             args=_chromium_args(),
+            timeout=20000,
         )
+        log.info("chromium launched")
         ctx = await browser.new_context(user_agent=_UA, locale="es-CO")
         page = await ctx.new_page()
         page.set_default_timeout(cfg.nav_timeout_ms)
@@ -257,6 +259,7 @@ async def check_availability(cfg: Config) -> Availability:
                         cfg.url, wait_until="domcontentloaded", timeout=cfg.nav_timeout_ms
                     )
                     await page.wait_for_timeout(2500)
+                    log.info("goto done")
                     last_err = None
                     break
                 except PWTimeout as e:
@@ -300,7 +303,10 @@ async def check_availability(cfg: Config) -> Availability:
             # aparece, pero SIEMPRE reportar todos los trámites disponibles.
             return result(True, services, note=f"{len(services)} trámite(s) disponible(s)")
         finally:
-            await browser.close()
+            try:
+                await asyncio.wait_for(browser.close(), timeout=5)
+            except Exception:
+                log.warning("browser.close() no terminó a tiempo; se ignora")
 
 
 async def _read_service_options(page: Page) -> list[str]:
