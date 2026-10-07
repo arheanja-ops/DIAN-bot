@@ -40,7 +40,7 @@ variable "schedule_expression" {
   description = "Cron de EventBridge Scheduler (hora local America/Bogota)."
   type        = string
   # Cada 10 min, de 07:00 a 16:59, Lunes a Viernes.
-  default = "cron(0/10 7-16 ? * MON-FRI *)"
+  default = "cron(0/5 7-16 ? * MON-FRI *)"
 }
 
 variable "notify_mode" {
