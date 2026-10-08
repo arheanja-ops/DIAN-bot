@@ -8,6 +8,12 @@ resource "aws_lambda_function" "scraper" {
   memory_size   = var.lambda_memory_mb
   timeout       = var.lambda_timeout_s
 
+  # Chromium + artefactos de Playwright llenan /tmp (512MB por defecto) y causan
+  # ENOSPC en el launch. 2GB da margen holgado; el costo extra sobre 512MB es ínfimo.
+  ephemeral_storage {
+    size = var.lambda_ephemeral_mb
+  }
+
   environment {
     variables = {
       DIAN_TIPO_ATENCION = var.dian_tipo_atencion

@@ -19,3 +19,5 @@ state/
 *.log
 spike_artifacts/
 screenshots/
+.claude/
+dian-bot-ampliacion.json

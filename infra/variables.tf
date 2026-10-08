@@ -28,6 +28,12 @@ variable "lambda_timeout_s" {
   default     = 120
 }
 
+variable "lambda_ephemeral_mb" {
+  description = "Almacenamiento efímero (/tmp) de la Lambda. Chromium+Playwright necesitan >512MB."
+  type        = number
+  default     = 2048
+}
+
 variable "poll_interval_min" {
   description = "Cada cuántos minutos consultar dentro de la ventana horaria."
   type        = number
