@@ -24,7 +24,9 @@ confirmación, fuera del alcance de la consulta de disponibilidad.
 from __future__ import annotations
 
 import asyncio
+import glob
 import logging
+import shutil
 from datetime import datetime, timezone
 
 from playwright.async_api import (
@@ -69,6 +71,12 @@ def _chromium_args() -> list[str]:
         "--disable-gpu",
         "--disable-software-rasterizer",
         "--disable-dev-shm-usage",
+        # --single-process y --no-zygote son NECESARIOS en Lambda: sin ellos Chromium
+        # intenta forkear GPU/zygote processes que crashean (GPU process launch failed
+        # error_code=1002 -> TargetClosedError). Con ellos el bot funcionó siempre; el
+        # fallo real de prod era ENOSPC en /tmp (resuelto con ephemeral_storage=2GB).
+        "--single-process",
+        "--no-zygote",
         "--disable-setuid-sandbox",
         "--disable-dbus",
     ]
@@ -307,6 +315,10 @@ async def check_availability(cfg: Config) -> Availability:
                 await asyncio.wait_for(browser.close(), timeout=5)
             except Exception:
                 log.warning("browser.close() no terminó a tiempo; se ignora")
+            # Lambda reutiliza el container: limpiar artefactos de Playwright en /tmp
+            # para que no se acumulen entre invocaciones y agoten el disco (ENOSPC).
+            for d in glob.glob("/tmp/playwright-artifacts-*"):
+                shutil.rmtree(d, ignore_errors=True)
 
 
 async def _read_service_options(page: Page) -> list[str]:
