@@ -69,6 +69,23 @@ def _run_scrape(categoria: str | None = None, forced: bool = False) -> dict:
     return {"statusCode": 200, "notified": bool(notified)}
 
 
+# --------------------------- acción: discover ----------------------------
+
+def _run_discover(tipo_persona: str | None = None) -> dict:
+    """Lista los trámites/categorías reales que la DIAN ofrece ahora mismo.
+    No agenda ni notifica; sirve para configurar multi-trámite sin adivinar labels.
+    """
+    from dian_bot.config import Config
+    from dian_bot.scraper import discover
+
+    cfg = Config.from_env()
+    if tipo_persona:
+        cfg = replace(cfg, tipo_persona=tipo_persona)
+    result = asyncio.run(discover(cfg))
+    log.info("discover result: %s", json.dumps(result, ensure_ascii=False))
+    return {"statusCode": 200, "discover": result}
+
+
 # --------------------------- acción: heartbeat ---------------------------
 
 def _run_heartbeat(phase: str) -> dict:
@@ -108,17 +125,15 @@ async def _send_all(cfg, text: str) -> int:
 # Categorías consultables por comando (mapa: alias en minúscula -> nombre real
 # del combo Categorias en la DIAN). El cron automático solo usa "Devoluciones".
 _CATEGORIAS = {
-    "devoluciones": "Devoluciones",
-    "devolucion": "Devoluciones",
-    "iva": "Devoluciones",
-    "rut": "RUT y orientación TAC",
-    "aduanas": "Aduanas",
-    "cobranzas": "Cobranzas",
-    "recaudo": "Recaudo (Corrección inconsistencias)",
-    "defensoria": "Defensoría",
-    "conferencias": "Conferencias o capacitaciones",
-    "naf": "Autogestión servicios en línea con NAF",
-    "inconsistencias": "Inconsistencias Grandes Contribuyentes",
+    "devoluciones": "Devoluciones.",
+    "devolucion": "Devoluciones.",
+    "iva": "Devoluciones.",
+    "rut": "RUT y orientación TAC.",
+    "cobranzas": "Cobranzas.",
+    "defensoria": "Defensoría.",
+    "conferencias": "Conferencias o capacitaciones.",
+    "naf": "Autogestión servicios en línea con NAF.",
+    "inconsistencias": "Inconsistencias Grandes Contribuyentes.",
 }
 
 _HELP = (
@@ -245,6 +260,11 @@ def handler(event, context):
     # Heartbeat de inicio/fin de jornada (schedules 7:00 y 17:00 L-V).
     if isinstance(event, dict) and event.get("action") == "heartbeat":
         return _run_heartbeat(event.get("phase", "start"))
+
+    # Descubrimiento: lista los trámites/categorías reales que ofrece la DIAN ahora.
+    # Invocación directa: {"action":"discover"} (opcional "tipo_persona").
+    if isinstance(event, dict) and event.get("action") == "discover":
+        return _run_discover(event.get("tipo_persona"))
 
     # Por defecto (EventBridge / invocación directa): scraping.
     # forced=True viene de /consultar (a demanda) -> notifica siempre.
