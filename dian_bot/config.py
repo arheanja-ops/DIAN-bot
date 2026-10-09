@@ -35,6 +35,7 @@ class Config:
     # Filtros de búsqueda
     servicio: str = "Devolución"  # texto a matchear en el combo Servicios
     ciudad: str = "Medellín"
+    tipo_persona: str = "Natural"  # Natural | Jurídica
     tipo_atencion: str = "Videoatención"  # Presencial | Videoatención
     categoria: str = "Devoluciones"  # categoría del combo Categorias
     # Operación
@@ -62,6 +63,7 @@ class Config:
             extra_chat_ids=extra,
             servicio=_get("DIAN_SERVICIO", "Devolución"),
             ciudad=_get("DIAN_CIUDAD", "Medellín"),
+            tipo_persona=_get("DIAN_TIPO_PERSONA", "Natural"),
             tipo_atencion=_get("DIAN_TIPO_ATENCION", "Videoatención"),
             categoria=_get("DIAN_CATEGORIA", "Devoluciones"),
             url=_get("DIAN_URL", "https://agendamiento.dian.gov.co/"),

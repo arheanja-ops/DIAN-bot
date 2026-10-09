@@ -56,7 +56,25 @@ def test_consultar_con_categoria_valida(monkeypatch, _mocks):
     captured = {}
     monkeypatch.setattr(lh, "_self_invoke_scrape", lambda categoria=None: captured.setdefault("cat", categoria))
     lh._handle_webhook(_event("/consultar rut"))
-    assert captured["cat"] == "RUT y orientación TAC"
+    # Label REAL de la DIAN (con punto final, confirmado por el modo descubrimiento).
+    assert captured["cat"] == "RUT y orientación TAC."
+
+
+def test_categorias_usan_labels_reales(_mocks):
+    # Todos los labels del mapeo deben terminar en punto (formato real de la DIAN)
+    # y no deben existir los alias inválidos que se quitaron (aduanas, recaudo).
+    assert all(v.endswith(".") for v in lh._CATEGORIAS.values())
+    assert "aduanas" not in lh._CATEGORIAS
+    assert "recaudo" not in lh._CATEGORIAS
+
+
+def test_router_discover(monkeypatch):
+    # Invocación directa {"action":"discover"} -> _run_discover.
+    called = {}
+    monkeypatch.setattr(lh, "_run_discover", lambda tp=None: called.setdefault("tp", tp) or {"statusCode": 200})
+    monkeypatch.setattr(lh, "_load_secrets_from_ssm", lambda: None)
+    lh.handler({"action": "discover", "tipo_persona": "Jurídica"}, None)
+    assert called.get("tp") == "Jurídica"
 
 
 def test_consultar_categoria_invalida_avisa(_mocks):

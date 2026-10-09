@@ -82,6 +82,19 @@ def _chromium_args() -> list[str]:
     ]
 
 
+def _clean_tmp() -> None:
+    """Borra los directorios temporales que deja Playwright/Chromium en /tmp.
+
+    Lambda reutiliza el container entre invocaciones y /tmp es pequeño: si no se
+    limpia, los restos (artifacts + user-data-dir del perfil) se acumulan hasta
+    agotar el disco (ENOSPC en el launch). Se llama ANTES del launch (para que una
+    corrida previa fallida no bloquee la siguiente) y en el finally.
+    """
+    for pattern in ("/tmp/playwright-artifacts-*", "/tmp/playwright_chromiumdev_profile-*"):
+        for d in glob.glob(pattern):
+            shutil.rmtree(d, ignore_errors=True)
+
+
 async def _accept_consent(page: Page) -> None:
     try:
         cb = page.locator("label:has-text('Acepto') input[type=checkbox]").first
@@ -248,6 +261,7 @@ async def check_availability(cfg: Config) -> Availability:
         )
 
     async with async_playwright() as p:
+        _clean_tmp()  # arrancar con /tmp limpio (evita ENOSPC por restos de corridas previas)
         log.info("launching chromium")
         browser = await p.chromium.launch(
             headless=cfg.headless,
@@ -281,7 +295,7 @@ async def check_availability(cfg: Config) -> Availability:
             await _enter_agendar(page)
 
             # PasoUno en cascada
-            if not await _pick(page, "TipoPersona", "Natural"):
+            if not await _pick(page, "TipoPersona", cfg.tipo_persona):
                 raise ScrapeError("PasoUno: no se pudo seleccionar tipo de persona")
             await _pick(page, "TipoAtencion", cfg.tipo_atencion)
             if not await _pick(page, "Categorias", cfg.categoria):
@@ -315,10 +329,9 @@ async def check_availability(cfg: Config) -> Availability:
                 await asyncio.wait_for(browser.close(), timeout=5)
             except Exception:
                 log.warning("browser.close() no terminó a tiempo; se ignora")
-            # Lambda reutiliza el container: limpiar artefactos de Playwright en /tmp
-            # para que no se acumulen entre invocaciones y agoten el disco (ENOSPC).
-            for d in glob.glob("/tmp/playwright-artifacts-*"):
-                shutil.rmtree(d, ignore_errors=True)
+            # Lambda reutiliza el container: limpiar /tmp para que los restos no
+            # se acumulen entre invocaciones y agoten el disco (ENOSPC).
+            _clean_tmp()
 
 
 async def _read_service_options(page: Page) -> list[str]:
@@ -340,3 +353,92 @@ async def _read_service_options(page: Page) -> list[str]:
         )
     except PWTimeout:
         return []
+
+
+async def _list_boton_options(page: Page, control: str) -> list[str]:
+    """Lista los textos de las opciones (.boton) disponibles en un control
+    identificado por nombre=. No hace clic; solo lee lo que la SPA ofrece ahora.
+    """
+    try:
+        return await page.evaluate(
+            """(control) => {
+                const root = document.querySelector(`[nombre='${control}']`);
+                if (!root) return [];
+                const nodes = root.querySelectorAll('.boton');
+                const src = nodes.length ? nodes : root.querySelectorAll('*');
+                return [...new Set(
+                    [...src]
+                        .map(n => (n.textContent || '').trim())
+                        .filter(t => t && t.length > 1 && t.length < 120)
+                )];
+            }""",
+            control,
+        )
+    except Exception:
+        return []
+
+
+async def discover(cfg: Config) -> dict:
+    """Modo descubrimiento: recorre la cascada de agendamiento y reporta los
+    labels REALES que la DIAN ofrece ahora (tipos de persona, tipos de atención,
+    categorías y trámites) para una persona dada. No agenda ni notifica.
+
+    Devuelve un dict con las listas encontradas en cada paso. Útil para configurar
+    multi-trámite sin adivinar los textos de los botones.
+    """
+    out: dict = {
+        "tipo_persona": cfg.tipo_persona if hasattr(cfg, "tipo_persona") else "Natural",
+        "tipos_persona_disponibles": [],
+        "tipos_atencion": [],
+        "categorias": [],
+        "servicios": [],
+    }
+    persona = out["tipo_persona"]
+
+    async with async_playwright() as p:
+        _clean_tmp()
+        log.info("discover: launching chromium")
+        browser = await p.chromium.launch(
+            headless=cfg.headless, args=_chromium_args(), timeout=20000
+        )
+        log.info("discover: chromium launched")
+        ctx = await browser.new_context(user_agent=_UA, locale="es-CO")
+        page = await ctx.new_page()
+        page.set_default_timeout(cfg.nav_timeout_ms)
+        try:
+            await page.goto(cfg.url, wait_until="domcontentloaded", timeout=cfg.nav_timeout_ms)
+            await page.wait_for_timeout(2500)
+            await _accept_consent(page)
+            await _enter_agendar(page)
+
+            # Paso 1: tipos de persona disponibles.
+            out["tipos_persona_disponibles"] = await _list_boton_options(page, "TipoPersona")
+            log.info("discover: tipos_persona=%s", out["tipos_persona_disponibles"])
+
+            if not await _pick(page, "TipoPersona", persona):
+                raise ScrapeError(f"discover: no se pudo seleccionar persona '{persona}'")
+
+            # Paso 2: tipos de atención para esa persona.
+            await page.wait_for_timeout(1200)
+            out["tipos_atencion"] = await _list_boton_options(page, "TipoAtencion")
+            log.info("discover: tipos_atencion=%s", out["tipos_atencion"])
+            await _pick(page, "TipoAtencion", cfg.tipo_atencion)
+
+            # Paso 3: categorías disponibles.
+            await page.wait_for_timeout(1200)
+            out["categorias"] = await _list_boton_options(page, "Categorias")
+            log.info("discover: categorias=%s", out["categorias"])
+
+            # Paso 4 (opcional): si elegimos la categoría configurada, listar sus servicios.
+            if await _pick(page, "Categorias", cfg.categoria):
+                await page.wait_for_timeout(1800)
+                if not await _modal_no_availability(page):
+                    out["servicios"] = await _read_service_options(page)
+                    log.info("discover: servicios=%s", out["servicios"])
+            return out
+        finally:
+            try:
+                await asyncio.wait_for(browser.close(), timeout=5)
+            except Exception:
+                log.warning("browser.close() no terminó a tiempo; se ignora")
+            _clean_tmp()
