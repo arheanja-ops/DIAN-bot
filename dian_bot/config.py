@@ -46,6 +46,7 @@ class Config:
     timezone: str = "America/Bogota"
     headless: bool = True
     nav_timeout_ms: int = 45000
+    scrape_budget_s: int = 90  # presupuesto global del scrape (< timeout Lambda 120s)
     state_path: str = "state/last_availability.json"
     history_path: str = "state/history.jsonl"
     notify_mode: str = "only_hits"  # only_hits | always

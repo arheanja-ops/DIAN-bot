@@ -272,7 +272,8 @@ async def check_availability(cfg: Config) -> Availability:
         ctx = await browser.new_context(user_agent=_UA, locale="es-CO")
         page = await ctx.new_page()
         page.set_default_timeout(cfg.nav_timeout_ms)
-        try:
+
+        async def _navigate_and_parse() -> Availability:
             # Navegación con reintento: el sitio de la DIAN a veces tarda o falla.
             last_err: Exception | None = None
             for attempt in range(1, 3):
@@ -324,6 +325,15 @@ async def check_availability(cfg: Config) -> Availability:
             # Opcional: si el usuario configuró un filtro de ciudad, marcar si
             # aparece, pero SIEMPRE reportar todos los trámites disponibles.
             return result(True, services, note=f"{len(services)} trámite(s) disponible(s)")
+
+        try:
+            # Presupuesto de tiempo global: la SPA de la DIAN a veces cuelga un paso.
+            # Abortar limpio a los 90s (dejando ~30s de margen antes del kill de
+            # Lambda a los 120s) permite loggear y cerrar el browser ordenadamente.
+            return await asyncio.wait_for(_navigate_and_parse(), timeout=cfg.scrape_budget_s)
+        except asyncio.TimeoutError:
+            log.warning("scrape abortado por presupuesto de tiempo (%ss)", cfg.scrape_budget_s)
+            raise ScrapeError("scrape excedió el presupuesto de tiempo")
         finally:
             try:
                 await asyncio.wait_for(browser.close(), timeout=5)
