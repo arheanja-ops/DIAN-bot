@@ -70,11 +70,19 @@ def _run_scrape(categoria: str | None = None, forced: bool = False) -> dict:
     # asyncio.wait_for (cancelación cooperativa sobre un transporte CDP muerto).
     # El proceso padre nunca se bloquea, así que puede matar al hijo a los budget
     # segundos de forma garantizada. Ver docs/PLAN-AMPLIACION.md.
+    #
+    # El resultado se pasa por ARCHIVO en /tmp (no multiprocessing.Queue): las
+    # Queue usan semáforos POSIX en /dev/shm, que NO existe en Lambda -> FileNotFoundError.
     import multiprocessing as mp
 
+    result_path = "/tmp/scrape_result.json"
+    try:
+        os.remove(result_path)
+    except OSError:
+        pass
+
     ctx = mp.get_context("fork")
-    q: "mp.Queue" = ctx.Queue()
-    proc = ctx.Process(target=_scrape_child, args=(cfg, q))
+    proc = ctx.Process(target=_scrape_child, args=(cfg, result_path))
     proc.start()
     proc.join(cfg.scrape_budget_s)
     if proc.is_alive():
@@ -84,26 +92,32 @@ def _run_scrape(categoria: str | None = None, forced: bool = False) -> dict:
         if proc.is_alive():
             proc.kill()
         return {"statusCode": 200, "notified": False, "timedOut": True}
+
+    notified = False
     try:
-        notified = q.get_nowait()
-    except Exception:
-        notified = False
-    return {"statusCode": 200, "notified": bool(notified)}
+        with open(result_path) as fh:
+            notified = bool(json.load(fh).get("notified"))
+    except (OSError, ValueError):
+        pass
+    return {"statusCode": 200, "notified": notified}
 
 
-def _scrape_child(cfg, q) -> None:
-    """Corre en el proceso hijo: ejecuta el scrape+notificación y devuelve si
-    notificó por la Queue. Si falla, deja False (el padre no se bloquea)."""
+def _scrape_child(cfg, result_path: str) -> None:
+    """Corre en el proceso hijo: ejecuta el scrape+notificación y escribe el
+    resultado a un archivo en /tmp. Si falla, deja notified=False (el padre no
+    se bloquea). No usa Queue/semáforos (no hay /dev/shm en Lambda)."""
     from dian_bot.main import run_once
 
+    notified = False
     try:
-        q.put(bool(asyncio.run(run_once(cfg))))
+        notified = bool(asyncio.run(run_once(cfg)))
     except Exception as e:  # noqa: BLE001 - el hijo nunca debe tumbar al padre
         log.error("scrape hijo falló: %s", e)
-        try:
-            q.put(False)
-        except Exception:
-            pass
+    try:
+        with open(result_path, "w") as fh:
+            json.dump({"notified": notified}, fh)
+    except OSError:
+        pass
 
 
 # --------------------------- acción: discover ----------------------------
