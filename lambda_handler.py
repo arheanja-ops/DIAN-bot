@@ -52,7 +52,6 @@ def _load_secrets_from_ssm() -> None:
 
 def _run_scrape(categoria: str | None = None, forced: bool = False) -> dict:
     from dian_bot.config import Config
-    from dian_bot.main import run_once
 
     cfg = Config.from_env()
     overrides = {}
@@ -65,8 +64,46 @@ def _run_scrape(categoria: str | None = None, forced: bool = False) -> dict:
         overrides["notify_mode"] = "always"
     if overrides:
         cfg = replace(cfg, **overrides)
-    notified = asyncio.run(run_once(cfg))
+
+    # El scrape corre en un PROCESO HIJO matable. Con Chromium --single-process,
+    # un cuelgue del navegador NO lo cortan ni el timeout de Playwright ni
+    # asyncio.wait_for (cancelación cooperativa sobre un transporte CDP muerto).
+    # El proceso padre nunca se bloquea, así que puede matar al hijo a los budget
+    # segundos de forma garantizada. Ver docs/PLAN-AMPLIACION.md.
+    import multiprocessing as mp
+
+    ctx = mp.get_context("fork")
+    q: "mp.Queue" = ctx.Queue()
+    proc = ctx.Process(target=_scrape_child, args=(cfg, q))
+    proc.start()
+    proc.join(cfg.scrape_budget_s)
+    if proc.is_alive():
+        log.warning("scrape excedió %ss; matando proceso hijo", cfg.scrape_budget_s)
+        proc.terminate()
+        proc.join(5)
+        if proc.is_alive():
+            proc.kill()
+        return {"statusCode": 200, "notified": False, "timedOut": True}
+    try:
+        notified = q.get_nowait()
+    except Exception:
+        notified = False
     return {"statusCode": 200, "notified": bool(notified)}
+
+
+def _scrape_child(cfg, q) -> None:
+    """Corre en el proceso hijo: ejecuta el scrape+notificación y devuelve si
+    notificó por la Queue. Si falla, deja False (el padre no se bloquea)."""
+    from dian_bot.main import run_once
+
+    try:
+        q.put(bool(asyncio.run(run_once(cfg))))
+    except Exception as e:  # noqa: BLE001 - el hijo nunca debe tumbar al padre
+        log.error("scrape hijo falló: %s", e)
+        try:
+            q.put(False)
+        except Exception:
+            pass
 
 
 # --------------------------- acción: discover ----------------------------

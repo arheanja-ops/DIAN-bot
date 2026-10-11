@@ -279,7 +279,7 @@ async def check_availability(cfg: Config) -> Availability:
             for attempt in range(1, 3):
                 try:
                     await page.goto(
-                        cfg.url, wait_until="domcontentloaded", timeout=cfg.nav_timeout_ms
+                        cfg.url, wait_until="commit", timeout=cfg.nav_timeout_ms
                     )
                     await page.wait_for_timeout(2500)
                     log.info("goto done")

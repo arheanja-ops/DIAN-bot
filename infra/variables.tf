@@ -23,9 +23,9 @@ variable "lambda_memory_mb" {
 }
 
 variable "lambda_timeout_s" {
-  description = "Timeout de la Lambda en segundos."
+  description = "Timeout de la Lambda en segundos. Red de seguridad > scrape_budget (90s)."
   type        = number
-  default     = 120
+  default     = 95
 }
 
 variable "lambda_ephemeral_mb" {
